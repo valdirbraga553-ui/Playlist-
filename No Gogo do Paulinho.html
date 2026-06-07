@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Player Auto Buffer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+    * { margin: 0; padding: 0; }
+    body { background: #0f0f0f; }
+    #player { width: 100%; height: 100vh; }
+    #status-conexao {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        background: rgba(0,0,0,0.7);
+        color: #0f0;
+        padding: 5px 10px;
+        border-radius: 5px;
+        font-family: Arial;
+        font-size: 12px;
+        z-index: 9999;
+    }
+</style>
+</head>
+<body>
+
+<div id="status-conexao">Detectando conexão...</div>
+<div id="player"></div>
+
+<script src="https://cdn.jsdelivr.net/gh/valdirbraga553-ui/PDF@main/playerjs.js"></script>
+
+<script>
+    // Detecta tipo de conexão
+    function getConfigBuffer() {
+        const conexao = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+        let tipo = 'wifi';
+        let downlink = 10; // Mbps padrão
+
+        if (conexao) {
+            tipo = conexao.effectiveType; // '4g', '3g', '2g', 'slow-2g'
+            downlink = conexao.downlink; // Velocidade real em Mbps
+            console.log('Conexão:', tipo, downlink + 'Mbps');
+        }
+
+        // Configs por tipo de conexão
+        const configs = {
+            'slow-2g': { buffer: 180, qualidade: '240p', msg: '2G Lento - Buffer 3min' },
+            '2g': { buffer: 120, qualidade: '360p', msg: '2G - Buffer 2min' },
+            '3g': { buffer: 90, qualidade: '480p', msg: '3G - Buffer 1min30s' },
+            '4g': { buffer: 45, qualidade: 'HD', msg: '4G - Buffer 45s' },
+            'wifi': { buffer: 30, qualidade: 'HD', msg: 'WiFi - Buffer 30s' }
+        };
+
+        // Se a velocidade real for muito baixa, aumenta buffer
+        let config = configs[tipo] || configs['wifi'];
+        if (downlink < 1.5) {
+            config.buffer = 180; // 3min pra conexão < 1.5Mbps
+            config.msg = tipo.toUpperCase() + ` ${downlink}Mbps - Buffer Alto`;
+        }
+
+        document.getElementById('status-conexao').innerText = config.msg;
+        return config;
+    }
+
+    const config = getConfigBuffer();
+
+    var player = new Playerjs({
+        id: "player",
+        file: "https://archive.org/download/Instrumento/No.Gogo.do.Paulinho.mkv",
+
+        // Visual YouTube
+        skin: "youtube",
+        lang: "pt",
+        color: "#FF0000",
+        default_audio_track: "pt",
+        default_quality: config.qualidade, // Qualidade automática
+        autoplay: 1,
+        hotkeys: 1,
+        fluid: true,
+        logo: "",
+
+        // BUFFER DINÂMICO
+        hls: {
+            maxBufferLength: config.buffer, // Buffer muda pela conexão
+            maxMaxBufferLength: config.buffer * 2,
+            maxBufferSize: config.buffer * 1000 * 1000, // 1MB por segundo
+
+            // Se for 3G ou pior, desliga ABR e força qualidade baixa
+            capLevelToPlayerSize: true,
+            startLevel: config.qualidade === 'HD'? -1 : 0,
+
+            // Tolerância maior pra erro em conexão ruim
+            fragLoadingMaxRetry: 8,
+            fragLoadingTimeOut: 30000,
+            lowLatencyMode: false
+        }
+    });
+
+    // Se a conexão mudar no meio do vídeo, avisa
+    if (navigator.connection) {
+        navigator.connection.addEventListener('change', () => {
+            const novaConfig = getConfigBuffer();
+            console.log('Conexão mudou. Novo buffer:', novaConfig.buffer);
+        });
+    }
+</script>
+
+</body>
+</html>
